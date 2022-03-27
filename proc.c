@@ -6,7 +6,9 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
-
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -111,6 +113,7 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
+  p->tglid = p->pid;
 
   return p;
 }
@@ -531,4 +534,63 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+int clone(int (*fn)(void *), void* stack, int flags, void* args) {
+  struct proc *np,*p;
+  uint *sp;
+  int pid;
+  p = myproc();
+  if((np = allocproc()) == 0){
+    return -1;
+  }
+  np->tglid = p->tglid;
+  if(CLONE_VM & flags) {
+    np->pgdir = p->pgdir;
+  }
+  else{
+    if((np->pgdir = copyuvm(p->pgdir, p->sz)) == 0){
+    kfree(np->kstack);
+    np->kstack = 0;
+    np->state = UNUSED;
+    return -1;
+    }
+  }
+  if(CLONE_PARENT & flags) {
+    np->parent = p->parent;
+  }
+  else{
+    np->parent = p;
+  }
+  *np->tf = *p->tf;
+  sp = (uint *)stack;
+  sp -= 1;
+  *sp = 0xffffffff;
+  sp -= 1;
+  *sp = (uint)args;
+  np->tf->eip = (uint)fn;
+  np->tf->esp = (uint)sp;
+  if(CLONE_FILES & flags) {
+    for(int i = 0; i < NOFILE; i++)
+      if(p->ofile[i])
+        np->ofile[i] = filedup(p->ofile[i]);
+  }
+  else {
+    for(int i =0;i < NOFILE;i++) {
+      np->ofile[i] = filealloc();
+      np->ofile[i]->type = p->ofile[i]->type;
+      np->ofile[i]->readable = p->ofile[i]->readable;
+      np->ofile[i]->writable = p->ofile[i]->writable;
+      np->ofile[i]->off = p->ofile[i]->off;
+      np->ofile[i]->ip = idup(p->ofile[i]->ip);
+    }
+  }
+  if(CLONE_FS & flags)
+    np->cwd = idup(p->cwd);
+  safestrcpy(np->name, p->name, sizeof(p->name));
+  pid = np->pid;
+  acquire(&ptable.lock);
+  np->state = RUNNABLE;
+  release(&ptable.lock);
+  return pid;
 }

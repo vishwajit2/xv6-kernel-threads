@@ -41,6 +41,7 @@ struct proc {
   char *kstack;                // Bottom of kernel stack for this process
   enum procstate state;        // Process state
   int pid;                     // Process ID
+  int tglid;                    // thread group leader's pid
   struct proc *parent;         // Parent process
   struct trapframe *tf;        // Trap frame for current syscall
   struct context *context;     // swtch() here to run process
@@ -56,3 +57,7 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+#define CLONE_PARENT 1
+#define CLONE_FILES  2
+#define CLONE_FS     4
+#define CLONE_VM     8
