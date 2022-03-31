@@ -114,7 +114,7 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
   p->tglid = p->pid;
-
+  p->tgl = p;
   return p;
 }
 
@@ -251,6 +251,10 @@ exit(void)
   curproc->cwd = 0;
 
   acquire(&ptable.lock);
+
+  if(curproc->pid != curproc->tglid) {
+    wakeup1(curproc->tgl);
+  }
 
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
@@ -545,7 +549,9 @@ int clone(int (*fn)(void *), void* stack, int flags, void* args) {
     return -1;
   }
   np->tglid = p->tglid;
-  if(CLONE_VM & flags) {
+  np->tgl = p->tgl;
+  if (CLONE_VM & flags)
+  {
     np->pgdir = p->pgdir;
   }
   else{
@@ -593,4 +599,47 @@ int clone(int (*fn)(void *), void* stack, int flags, void* args) {
   np->state = RUNNABLE;
   release(&ptable.lock);
   return pid;
+}
+
+int findproc(int pid, struct proc *p) {
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if(p->pid == pid) {
+      release(&ptable.lock);  
+      return 0;
+    }
+  }
+  release(&ptable.lock);
+  return -1;
+}
+
+int join(int pid) {
+  struct proc* p = myproc();
+  if(pid == p->tglid)
+    return -1;
+  struct proc *jproc = 0;
+  
+  if(findproc(pid, jproc) == -1)
+    return -1;
+
+  acquire(&ptable.lock);
+  for (;;)
+  {
+    if(jproc->killed) {
+      release(&ptable.lock);
+      return -1;
+    }
+    if(jproc->state == ZOMBIE){
+      kfree(jproc->kstack);
+      jproc->kstack = 0;
+      jproc->pid = 0;
+      jproc->parent = 0;
+      jproc->name[0] = 0;
+      jproc->killed = 0;
+      jproc->state = UNUSED;
+      release(&ptable.lock);
+      return pid;
+      }
+    sleep(p->tgl, &ptable.lock);
+  }
 }

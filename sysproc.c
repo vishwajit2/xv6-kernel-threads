@@ -105,3 +105,10 @@ int sys_clone(void) {
       return -1;
     return clone(fn,stack,flags,args);
 }
+
+int sys_join(void) {
+    int pid;
+    if(argint(0,&pid) < 0)
+      return -1;
+    return join(pid);
+}
