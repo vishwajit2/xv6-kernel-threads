@@ -92,12 +92,12 @@ sys_uptime(void)
 
 int sys_clone(void) {
     int (*fn)(void *);
-    void *stack;
+    char *stack;
     void *args;
     int flags;
     if(argptr(0,(char **)&fn,0) < 0)
       return -1;
-    if(argptr(1,(char **)&stack,0) < 0)
+    if(argint(1,(int *)&stack) < 0)
       return -1;
     if(argint(2,&flags) < 0)
       return -1;

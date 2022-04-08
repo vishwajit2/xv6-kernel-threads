@@ -571,9 +571,9 @@ int clone(int (*fn)(void *), void* stack, int flags, void* args) {
   *np->tf = *p->tf;
   sp = (uint *)stack;
   sp -= 1;
-  *sp = 0xffffffff;
-  sp -= 1;
   *sp = (uint)args;
+  sp -= 1;
+  *sp = 0xffffffff;
   np->tf->eip = (uint)fn;
   np->tf->esp = (uint)sp;
   if(CLONE_FILES & flags) {
@@ -621,7 +621,7 @@ int join(int pid) {
   
   if(findproc(pid, jproc) == -1)
     return -1;
-
+      
   acquire(&ptable.lock);
   for (;;)
   {
