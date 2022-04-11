@@ -643,3 +643,19 @@ int join(int pid) {
     sleep(p->tgl, &ptable.lock);
   }
 }
+
+int tkill(int pid) {
+  struct proc* p = myproc();
+  struct proc* i;
+  acquire(&ptable.lock);
+  for(i = ptable.proc;i < &ptable.proc[NPROC];i++) {
+    if(i->pid == pid && i->tglid != pid && i->tglid == p->tglid) {
+      i->killed = 1;
+      i->state = RUNNABLE;
+      release(&ptable.lock);
+      return 0;
+    }
+  }
+  release(&ptable.lock);
+  return -1;
+}

@@ -17,5 +17,7 @@ int main(int argc,char *argv[]) {
     // join(pid);
     printf(0,"From main function!, pid : %d\n",pid);
     printf(0,"Changed Value : %d\n",a);
+    // int ret = tkill(pid);
+    // printf(0,"%d\n",ret);
     exit();
 }

@@ -112,3 +112,10 @@ int sys_join(void) {
       return -1;
     return join(pid);
 }
+
+int sys_tkill(void) {
+  int pid;
+  if(argint(0,&pid) < 0)
+    return -1;
+  return tkill(pid);
+}
