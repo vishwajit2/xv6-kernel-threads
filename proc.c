@@ -7,6 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 #include "sleeplock.h"
+#include "stat.h"
 #include "fs.h"
 #include "file.h"
 struct {
@@ -261,9 +262,9 @@ exit(void)
 
   // Pass abandoned children to init.
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->parent == curproc){
+    if(p->parent == curproc && p->pid == p->tglid){ //only processes are passed not threads
       p->parent = initproc;
-      if(p->state == ZOMBIE)
+      if(p->state == ZOMBIE )
         wakeup1(initproc);
     }
   }
@@ -591,8 +592,12 @@ int clone(int (*fn)(void *), void* stack, int flags, void* args) {
       np->ofile[i]->ip = idup(p->ofile[i]->ip);
     }
   }
-  if(CLONE_FS & flags)
+  if(CLONE_FS & flags){
     np->cwd = idup(p->cwd);
+  }
+  else {
+    np->cwd = idup(p->cwd); // TODO : create a copy of p->cwd
+  }
   safestrcpy(np->name, p->name, sizeof(p->name));
   pid = np->pid;
   acquire(&ptable.lock);
@@ -601,10 +606,10 @@ int clone(int (*fn)(void *), void* stack, int flags, void* args) {
   return pid;
 }
 
-int findproc(int pid, struct proc *p) {
+int findproc(int pid, struct proc **p) {
   acquire(&ptable.lock);
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if(p->pid == pid) {
+  for(*p = ptable.proc; *p < &ptable.proc[NPROC]; (*p)++) {
+    if((*p)->pid == pid) {
       release(&ptable.lock);  
       return 0;
     }
@@ -619,9 +624,8 @@ int join(int pid) {
     return -1;
   struct proc *jproc = 0;
   
-  if(findproc(pid, jproc) == -1)
+  if(findproc(pid, &jproc) == -1)
     return -1;
-      
   acquire(&ptable.lock);
   for (;;)
   {
@@ -649,9 +653,11 @@ int tkill(int pid) {
   struct proc* i;
   acquire(&ptable.lock);
   for(i = ptable.proc;i < &ptable.proc[NPROC];i++) {
-    if(i->pid == pid && i->tglid != pid && i->tglid == p->tglid) {
+    if(i->pid == pid && i->tglid != pid && i->tglid == p->tglid ) {
       i->killed = 1;
-      i->state = RUNNABLE;
+      if(i->state == SLEEPING) {
+        i->state = RUNNABLE;
+      }
       release(&ptable.lock);
       return 0;
     }
