@@ -123,6 +123,7 @@ void            yield(void);
 int             clone(int (*)(void *),void* , int, void*);
 int             join(int);
 int             tkill(int);
+int             tgkill(void);
 // swtch.S
 void            swtch(struct context**, struct context*);
 

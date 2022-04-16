@@ -665,3 +665,55 @@ int tkill(int pid) {
   release(&ptable.lock);
   return -1;
 }
+
+int tgkill() {
+  struct proc *curpr = myproc();
+  struct proc *p;
+
+  if(curpr->pid != curpr->tglid) {
+    //only thread group leader can kill all other threads
+    return -1;
+  }
+  int count = 0;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->tglid == curpr->pid && p->pid != curpr->pid){
+      p->killed = 1;
+      count++;
+      if (p->state == SLEEPING)
+      {
+        p->state = RUNNABLE;
+        p->chan = 0;
+      }
+    }
+  }
+  // wait for all child thread to become zombie.
+  while(count > 0)
+  {
+    for (p = ptable.proc; p < &ptable.proc[NPROC] && count >0; p++)
+    {
+      if(p->tglid == curpr->pid && p->pid != curpr->pid){
+        if(p->state == ZOMBIE){
+          kfree(p->kstack);
+          cprintf("Thread killed : %d\n",p->pid);
+          p->kstack = 0;
+          p->pid = 0;
+          p->parent = 0;
+          p->name[0] = 0;
+          p->killed = 0;
+          p->state = UNUSED;
+          count--;
+        } 
+      }
+    }
+    // the thread leader gets killed
+    if(curpr->killed) {
+      release(&ptable.lock);
+      return -1;
+    }
+    // sleep for an exisiting thread in group to be zombie
+    if(count > 0) sleep(curpr, &ptable.lock);
+  }
+  release(&ptable.lock);
+  return 0;
+}
