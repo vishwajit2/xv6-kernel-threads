@@ -107,6 +107,10 @@ extern int sys_clone(void);
 extern int sys_join(void);
 extern int sys_tkill(void);
 extern int sys_tgkill(void);
+extern int sys_gettpid(void);
+extern int sys_kthread_resume(void);
+extern int sys_kthread_suspend(void);
+
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
 [SYS_exit]    sys_exit,
@@ -132,7 +136,10 @@ static int (*syscalls[])(void) = {
 [SYS_clone]   sys_clone,
 [SYS_join]   sys_join,
 [SYS_tkill]  sys_tkill,
-[SYS_tgkill]  sys_tgkill
+[SYS_tgkill]  sys_tgkill,
+[SYS_gettpid] sys_gettpid,
+[SYS_kthread_resume] sys_kthread_resume,
+[SYS_kthread_suspend] sys_kthread_suspend
 };
 
 void

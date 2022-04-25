@@ -124,6 +124,9 @@ int             clone(int (*)(void *),void* , int, void*);
 int             join(int);
 int             tkill(int);
 int             tgkill(void);
+int             gettpid(void);
+int             kthread_resume(int);
+int             kthread_suspend(void);
 // swtch.S
 void            swtch(struct context**, struct context*);
 

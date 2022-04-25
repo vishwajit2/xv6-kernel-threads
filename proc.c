@@ -201,7 +201,7 @@ fork(void)
     return -1;
   }
   np->sz = curproc->sz;
-  np->parent = curproc;
+  np->parent = curproc->tgl;
   *np->tf = *curproc->tf;
 
   // Clear %eax so that fork returns 0 in the child.
@@ -256,9 +256,10 @@ exit(void)
   if(curproc->pid != curproc->tglid) {
     wakeup1(curproc->tgl);
   }
-
+  else{
   // Parent might be sleeping in wait().
-  wakeup1(curproc->parent);
+    wakeup1(curproc->parent);
+  }
 
   // Pass abandoned children to init.
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
@@ -557,10 +558,10 @@ int clone(int (*fn)(void *), void* stack, int flags, void* args) {
   }
   else{
     if((np->pgdir = copyuvm(p->pgdir, p->sz)) == 0){
-    kfree(np->kstack);
-    np->kstack = 0;
-    np->state = UNUSED;
-    return -1;
+      kfree(np->kstack);
+      np->kstack = 0;
+      np->state = UNUSED;
+      return -1;
     }
   }
   if(CLONE_PARENT & flags) {
@@ -716,4 +717,38 @@ int tgkill() {
   }
   release(&ptable.lock);
   return 0;
+}
+
+int kthread_suspend() {
+  struct proc *p;
+  p = myproc();
+  acquire(&ptable.lock);
+  p->state = SLEEPING;
+  // p->chan = p->tgl;
+  sched();
+  // p->chan = 0;
+  release(&ptable.lock);
+  return 0;
+}
+
+int kthread_resume(int pid) {
+  struct proc *i;
+  acquire(&ptable.lock);
+  for(i = ptable.proc;i<&ptable.proc[NPROC];i++) {
+    if(i->pid == pid)
+      break;
+  }
+  if(i->state == SLEEPING) {
+    i->state = RUNNABLE;
+    // i->chan = 0;
+    release(&ptable.lock);
+    return 0;
+  }
+  return -1;
+}
+
+int gettpid() {
+  struct proc* p;
+  p = myproc();
+  return p->pid;
 }

@@ -123,3 +123,18 @@ int sys_tkill(void) {
 int sys_tgkill(void) {
   return tgkill();
 }
+
+int sys_gettpid(void) {
+  return gettpid();
+}
+
+int sys_kthread_suspend(void) {
+  return kthread_suspend();
+}
+
+int sys_kthread_resume(void) {
+  int pid;
+  if(argint(0,&pid)<0)
+    return -1;
+  return kthread_resume(pid);
+}
