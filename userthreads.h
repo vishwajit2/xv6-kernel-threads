@@ -16,4 +16,31 @@ typedef struct Thread {
     int state;
     char* stack;
 } Thread;
+
+#define QUEUE_SIZE 10
+
+typedef struct queue {
+    int front;
+    int rear;
+    int data[QUEUE_SIZE];
+} queue;
+
+typedef struct spinlock {
+    uint locked;
+    struct cpu *cpu;
+} spinlock;
+
+typedef struct semaphore {
+    int value;
+    queue list;
+    spinlock s;
+} semaphore;
+
+int thread_create(Thread *th, int (*fn)(void *), void *args);
+int thread_join(Thread *th);
+int thread_kill(Thread *th);
+int semaphore_wait(semaphore *s);
+int semaphore_signal(semaphore *s);
+void init_semaphore(semaphore *s, int value);
+
 #endif
