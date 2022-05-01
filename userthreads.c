@@ -131,20 +131,16 @@ void init_semaphore(semaphore *s, int value)
 int semaphore_wait(semaphore *sem)
 {
   acquire_spinlock(&(sem->s));
-  printf(1, "pid %d : called wait\n", gettpid());
+  // printf(1, "pid %d : called wait\n", gettpid());
   while (sem->value <= 0)
   {
-    printf(1,"SEM VALUE : %d\n",sem->value);
     int t = gettpid();
     enqueue(&sem->list, t);
-    printf(1, "pid %d : value before suspend : %d\n", t, sem->value);
     release_spinlock(&(sem->s));
     kthread_suspend();
     acquire_spinlock(&(sem->s));
-    printf(1, "pid %d : value after suspend : %d\n", t, sem->value);
   }
   sem->value--;
-  printf(1, "pid %d : out of kthread_suspend!\n", gettpid());
   release_spinlock(&(sem->s));
   return 0;
 }
@@ -156,7 +152,7 @@ int semaphore_signal(semaphore *sem)
   if (!is_queue_empty(sem->list))
   {
     int x = dequeue(&(sem->list));
-    printf(1, "pid %d : TRESUME on %d\n", gettpid(), x);
+    // printf(1, "pid %d : TRESUME on %d\n", gettpid(), x);
     release_spinlock(&(sem->s));
     kthread_resume(x);
     return 0;

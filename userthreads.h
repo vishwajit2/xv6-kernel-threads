@@ -42,5 +42,7 @@ int thread_kill(Thread *th);
 int semaphore_wait(semaphore *s);
 int semaphore_signal(semaphore *s);
 void init_semaphore(semaphore *s, int value);
-
+void init_spinlock(spinlock *s);
+void release_spinlock(spinlock *s);
+void acquire_spinlock(spinlock *s);
 #endif
