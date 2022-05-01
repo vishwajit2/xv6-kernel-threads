@@ -552,6 +552,7 @@ int clone(int (*fn)(void *), void* stack, int flags, void* args) {
   }
   np->tglid = p->tglid;
   np->tgl = p->tgl;
+  np->sz = p->sz;
   if (CLONE_VM & flags)
   {
     np->pgdir = p->pgdir;
