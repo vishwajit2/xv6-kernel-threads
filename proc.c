@@ -6,7 +6,10 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
-
+#include "sleeplock.h"
+#include "stat.h"
+#include "fs.h"
+#include "file.h"
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -111,7 +114,8 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
-
+  p->tglid = p->pid;
+  p->tgl = p;
   return p;
 }
 
@@ -197,7 +201,7 @@ fork(void)
     return -1;
   }
   np->sz = curproc->sz;
-  np->parent = curproc;
+  np->parent = curproc->tgl;
   *np->tf = *curproc->tf;
 
   // Clear %eax so that fork returns 0 in the child.
@@ -249,14 +253,19 @@ exit(void)
 
   acquire(&ptable.lock);
 
+  if(curproc->pid != curproc->tglid) {
+    wakeup1(curproc->tgl);
+  }
+  else{
   // Parent might be sleeping in wait().
-  wakeup1(curproc->parent);
+    wakeup1(curproc->parent);
+  }
 
   // Pass abandoned children to init.
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->parent == curproc){
+    if(p->parent == curproc && p->pid == p->tglid){ //only processes are passed not threads
       p->parent = initproc;
-      if(p->state == ZOMBIE)
+      if(p->state == ZOMBIE )
         wakeup1(initproc);
     }
   }
@@ -531,4 +540,216 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+int clone(int (*fn)(void *), void* stack, int flags, void* args) {
+  struct proc *np,*p;
+  uint *sp;
+  int pid;
+  p = myproc();
+  if((np = allocproc()) == 0){
+    return -1;
+  }
+  np->tglid = p->tglid;
+  np->tgl = p->tgl;
+  np->sz = p->sz;
+  if (CLONE_VM & flags)
+  {
+    np->pgdir = p->pgdir;
+  }
+  else{
+    if((np->pgdir = copyuvm(p->pgdir, p->sz)) == 0){
+      kfree(np->kstack);
+      np->kstack = 0;
+      np->state = UNUSED;
+      return -1;
+    }
+  }
+  if(CLONE_PARENT & flags) {
+    np->parent = p->parent;
+  }
+  else{
+    np->parent = p;
+  }
+  *np->tf = *p->tf;
+  sp = (uint *)stack;
+  sp -= 1;
+  *sp = (uint)args;
+  sp -= 1;
+  *sp = 0xffffffff;
+  np->tf->eip = (uint)fn;
+  np->tf->esp = (uint)sp;
+  if(CLONE_FILES & flags) {
+    for(int i = 0; i < NOFILE; i++)
+      if(p->ofile[i])
+        np->ofile[i] = filedup(p->ofile[i]);
+  }
+  else {
+    for(int i =0;i < NOFILE;i++) {
+      np->ofile[i] = filealloc();
+      np->ofile[i]->type = p->ofile[i]->type;
+      np->ofile[i]->readable = p->ofile[i]->readable;
+      np->ofile[i]->writable = p->ofile[i]->writable;
+      np->ofile[i]->off = p->ofile[i]->off;
+      np->ofile[i]->ip = idup(p->ofile[i]->ip);
+    }
+  }
+  if(CLONE_FS & flags){
+    np->cwd = idup(p->cwd);
+  }
+  else {
+    np->cwd = idup(p->cwd); // TODO : create a copy of p->cwd
+  }
+  safestrcpy(np->name, p->name, sizeof(p->name));
+  pid = np->pid;
+  acquire(&ptable.lock);
+  np->state = RUNNABLE;
+  release(&ptable.lock);
+  return pid;
+}
+
+int findproc(int pid, struct proc **p) {
+  acquire(&ptable.lock);
+  for(*p = ptable.proc; *p < &ptable.proc[NPROC]; (*p)++) {
+    if((*p)->pid == pid) {
+      release(&ptable.lock);  
+      return 0;
+    }
+  }
+  release(&ptable.lock);
+  return -1;
+}
+
+int join(int pid) {
+  struct proc* p = myproc();
+  if(pid == p->tglid)
+    return -1;
+  struct proc *jproc = 0;
+  
+  if(findproc(pid, &jproc) == -1)
+    return -1;
+  acquire(&ptable.lock);
+  for (;;)
+  {
+    if(jproc->killed) {
+      release(&ptable.lock);
+      return -1;
+    }
+    if(jproc->state == ZOMBIE){
+      kfree(jproc->kstack);
+      jproc->kstack = 0;
+      jproc->pid = 0;
+      jproc->parent = 0;
+      jproc->name[0] = 0;
+      jproc->killed = 0;
+      jproc->state = UNUSED;
+      release(&ptable.lock);
+      return pid;
+      }
+    sleep(p->tgl, &ptable.lock);
+  }
+}
+
+int tkill(int pid) {
+  struct proc* p = myproc();
+  struct proc* i;
+  acquire(&ptable.lock);
+  for(i = ptable.proc;i < &ptable.proc[NPROC];i++) {
+    if(i->pid == pid && i->tglid != pid && i->tglid == p->tglid ) {
+      i->killed = 1;
+      if(i->state == SLEEPING) {
+        i->state = RUNNABLE;
+      }
+      release(&ptable.lock);
+      return 0;
+    }
+  }
+  release(&ptable.lock);
+  return -1;
+}
+
+int tgkill() {
+  struct proc *curpr = myproc();
+  struct proc *p;
+
+  if(curpr->pid != curpr->tglid) {
+    //only thread group leader can kill all other threads
+    return -1;
+  }
+  int count = 0;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->tglid == curpr->pid && p->pid != curpr->pid){
+      p->killed = 1;
+      count++;
+      if (p->state == SLEEPING)
+      {
+        p->state = RUNNABLE;
+        p->chan = 0;
+      }
+    }
+  }
+  // wait for all child thread to become zombie.
+  while(count > 0)
+  {
+    for (p = ptable.proc; p < &ptable.proc[NPROC] && count >0; p++)
+    {
+      if(p->tglid == curpr->pid && p->pid != curpr->pid){
+        if(p->state == ZOMBIE){
+          kfree(p->kstack);
+          cprintf("Thread killed : %d\n",p->pid);
+          p->kstack = 0;
+          p->pid = 0;
+          p->parent = 0;
+          p->name[0] = 0;
+          p->killed = 0;
+          p->state = UNUSED;
+          count--;
+        } 
+      }
+    }
+    // the thread leader gets killed
+    if(curpr->killed) {
+      release(&ptable.lock);
+      return -1;
+    }
+    // sleep for an exisiting thread in group to be zombie
+    if(count > 0) sleep(curpr, &ptable.lock);
+  }
+  release(&ptable.lock);
+  return 0;
+}
+
+int kthread_suspend() {
+  struct proc *p;
+  p = myproc();
+  acquire(&ptable.lock);
+  p->state = SLEEPING;
+  // p->chan = p->tgl;
+  sched();
+  // p->chan = 0;
+  release(&ptable.lock);
+  return 0;
+}
+
+int kthread_resume(int pid) {
+  struct proc *i;
+  acquire(&ptable.lock);
+  for(i = ptable.proc;i<&ptable.proc[NPROC];i++) {
+    if(i->pid == pid)
+      break;
+  }
+  if(i->state == SLEEPING) {
+    i->state = RUNNABLE;
+    // i->chan = 0;
+    release(&ptable.lock);
+    return 0;
+  }
+  return -1;
+}
+
+int gettpid() {
+  struct proc* p;
+  p = myproc();
+  return p->pid;
 }

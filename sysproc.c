@@ -89,3 +89,52 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+int sys_clone(void) {
+    int (*fn)(void *);
+    char *stack;
+    void *args;
+    int flags;
+    if(argptr(0,(char **)&fn,0) < 0)
+      return -1;
+    if(argint(1,(int *)&stack) < 0)
+      return -1;
+    if(argint(2,&flags) < 0)
+      return -1;
+    if(argptr(3,(char **)&args,0) < 0)
+      return -1;
+    return clone(fn,stack,flags,args);
+}
+
+int sys_join(void) {
+    int pid;
+    if(argint(0,&pid) < 0)
+      return -1;
+    return join(pid);
+}
+
+int sys_tkill(void) {
+  int pid;
+  if(argint(0,&pid) < 0)
+    return -1;
+  return tkill(pid);
+}
+
+int sys_tgkill(void) {
+  return tgkill();
+}
+
+int sys_gettpid(void) {
+  return gettpid();
+}
+
+int sys_kthread_suspend(void) {
+  return kthread_suspend();
+}
+
+int sys_kthread_resume(void) {
+  int pid;
+  if(argint(0,&pid)<0)
+    return -1;
+  return kthread_resume(pid);
+}
